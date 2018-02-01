@@ -1,33 +1,33 @@
-package sqlite3
+package sql
 
 import (
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/rs/rest-layer/resource"
-	"github.com/rs/rest-layer/schema/query"
+	"github.com/andersonveiga/rest-layer/resource"
+	"github.com/andersonveiga/rest-layer/schema/query"
 )
 
 // getQuery returns the WHERE clause when given a Lookup
-func getQuery(l *resource.Lookup) (string, error) {
-	return translateQuery(l.Filter())
+func getQuery(q *query.Query) (string, error) {
+	return translateQuery(q)
 }
 
 // getSort returns the ORDER BY clause when given a Lookup
-func getSort(l *resource.Lookup) string {
-	return translateSort(l.Sort())
+func getSort(q *query.Query) string {
+	return translateSort(q.Sort)
 }
 
 // translateQuery constructs the string representation of the WHERE clause of a SQL query
-func translateQuery(q query.Query) (string, error) {
+func translateQuery(q *query.Query) (string, error) {
 	var str string
-	for _, exp := range q {
+	for _, exp := range q.Predicate {
 		switch t := exp.(type) {
 		case query.And:
 			var s string
 			for _, subExp := range t {
-				sb, err := translateQuery(query.Query{subExp})
+				sb, err := translateQuery(&query.Query{Predicate: query.Predicate{subExp}})
 				if err != nil {
 					return "", err
 				}
@@ -38,7 +38,7 @@ func translateQuery(q query.Query) (string, error) {
 		case query.Or:
 			var s string
 			for _, subExp := range t {
-				sb, err := translateQuery(query.Query{subExp})
+				sb, err := translateQuery(&query.Query{Predicate: query.Predicate{subExp}})
 				if err != nil {
 					return "", err
 				}
@@ -67,7 +67,7 @@ func translateQuery(q query.Query) (string, error) {
 			case string:
 				v = strings.Replace(v, "*", "%", -1)
 				v = strings.Replace(v, "_", "\\_", -1)
-				str += t.Field + " LIKE " + v + " ESCAPE '\\'"
+				str += t.Field + " LIKE " + v + " ESCAPE '\\\\'"
 			default:
 				str += t.Field + " IS " + v
 			}
@@ -116,16 +116,16 @@ func translateQuery(q query.Query) (string, error) {
 }
 
 // translateSort constructs the string representation of the ORDER BY clause of a SQL query
-func translateSort(l []string) string {
+func translateSort(l []query.SortField) string {
 	var str string
 	if len(l) == 0 {
 		return "id"
 	}
 	for _, s := range l {
-		if string([]rune(s)[0]) == "-" {
-			str += s[1:] + " DESC"
+		if s.Reversed {
+			str += s.Name + " DESC"
 		} else {
-			str += s
+			str += s.Name
 		}
 		str += ","
 	}
@@ -160,7 +160,7 @@ func valueToString(v query.Value) (string, error) {
 	case string:
 		str += fmt.Sprintf("'%v'", i)
 	case time.Time:
-		str += fmt.Sprintf("'%v'", i)
+		str += fmt.Sprintf("'%v'", v.(time.Time).Format("2006-01-02 15:04:05"))
 	default:
 		return "", resource.ErrNotImplemented
 	}

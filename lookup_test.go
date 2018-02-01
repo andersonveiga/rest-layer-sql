@@ -1,11 +1,11 @@
-package sqlite3
+package sql
 
 import (
 	"testing"
 
-	"github.com/rs/rest-layer/resource"
-	"github.com/rs/rest-layer/schema"
-	"github.com/rs/rest-layer/schema/query"
+	"github.com/andersonveiga/rest-layer/resource"
+	"github.com/andersonveiga/rest-layer/schema"
+	"github.com/andersonveiga/rest-layer/schema/query"
 	. "github.com/smartystreets/goconvey/convey"
 )
 

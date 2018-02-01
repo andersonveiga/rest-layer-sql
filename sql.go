@@ -35,22 +35,22 @@ func NewHandler(s *sql.DB, tableName string) *Handler {
 // Find searches for items in the backend store matching the lookup argument.
 // If no items are found, an empty list is returned with no error. If a query
 // operation is not implemented, a resource.ErrNotImplemented is returned.
-func (h *Handler) Find(ctx context.Context, lookup *resource.Lookup, offset, limit int) (*resource.ItemList, error) {
-	var q string // query string
+func (h *Handler) Find(ctx context.Context, q *query.Query) (*resource.ItemList, error) {
+	var qString string // query string
 	var err error
 	var rows *sql.Rows                // query result
 	var cols []string                 // column names
 	raw := []map[string]interface{}{} // holds the raw results as a map of columns:values
 
 	// build a paginated select statement based
-	q, err = getSelect(h, lookup, offset, limit)
+	qString, err = getSelect(h, q)
 	if err != nil {
 		log.WithField("error", err).Warn("Error getting the select statement.")
 		return nil, err
 	}
 
 	// execute the DB query, get the results
-	rows, err = h.session.Query(q)
+	rows, err = h.session.Query(qString)
 	if err != nil {
 		log.WithField("error", err).Warn("Error querying the DB.")
 		return nil, err
@@ -101,7 +101,7 @@ func (h *Handler) Find(ctx context.Context, lookup *resource.Lookup, offset, lim
 	}
 
 	// return a *resource.ItemList or an error
-	return newItemList(raw, offset, limit)
+	return newItemList(raw, q)
 
 }
 
@@ -126,6 +126,7 @@ func (h *Handler) Insert(ctx context.Context, items []*resource.Item) error {
 			log.WithField("error", err).Warn("Error creating insert statement.")
 			return err
 		}
+		fmt.Println("INSERT STMT", s)
 		_, err = h.session.Exec(s)
 		if err != nil {
 			txPtr.Rollback()
@@ -151,10 +152,8 @@ func (h *Handler) Update(ctx context.Context, item *resource.Item, original *res
 	}
 
 	// get the original item
-	l := resource.NewLookup()
-	q := query.Query{query.Equal{Field: "id", Value: original.ID}}
-	l.AddQuery(q)
-	s, err := getSelect(h, l, 1, 1)
+	q := query.Query{Predicate: query.Predicate{query.Equal{Field: "id", Value: original.ID}}}
+	s, err := getSelect(h, &q)
 	if err != nil {
 		txPtr.Rollback()
 		log.WithField("error", err).Warn("Error constructing select to retreive original record.")
@@ -244,10 +243,10 @@ func (h *Handler) Delete(ctx context.Context, item *resource.Item) error {
 // Clear removes all items matching the lookup and returns the number of items
 // removed as the first value.  If a query operation is not implemented
 // by the storage handler, a resource.ErrNotImplemented is returned.
-func (h *Handler) Clear(ctx context.Context, lookup *resource.Lookup) (int, error) {
+func (h *Handler) Clear(ctx context.Context, q *query.Query) (int, error) {
 
 	// construct the delete statement from the lookup data
-	s, err := getDelete(h, lookup)
+	s, err := getDelete(h, q)
 	if err != nil {
 		log.WithField("error", err).Warn("Error building delete statement for clear.")
 		return -1, err // should only be ErrNotImplemented
@@ -266,39 +265,41 @@ func (h *Handler) Clear(ctx context.Context, lookup *resource.Lookup) (int, erro
 }
 
 // getSelect returns a SQL SELECT statement that represents the Lookup data
-func getSelect(h *Handler, l *resource.Lookup, offset, limit int) (string, error) {
+func getSelect(h *Handler, q *query.Query) (string, error) {
 	str := "SELECT * FROM " + h.tableName
-	q, err := getQuery(l)
+	qString, err := getQuery(q)
 	if err != nil {
 		log.WithField("error", err).Warn("Error building query for select statement.")
 		return "", err
 	}
-	if q != "" {
-		str += " WHERE " + q
+	if qString != "" {
+		str += " WHERE " + qString
 	}
-	if l.Sort() != nil {
-		str += " ORDER BY " + getSort(l)
+	if q.Sort != nil {
+		str += " ORDER BY " + getSort(q)
 	}
 
-	if limit >= 0 {
-		str += fmt.Sprintf(" LIMIT %d", limit)
+
+	if q.Window != nil && q.Window.Limit >= 0 {
+		str += fmt.Sprintf(" LIMIT %d", q.Window.Limit)
 	}
-	if offset > 0 {
-		str += fmt.Sprintf(" OFFSET %d", offset)
+	if q.Window != nil && q.Window.Offset > 0 {
+		str += fmt.Sprintf(" OFFSET %d", q.Window.Offset)
 	}
 	str += ";"
+
 	return str, nil
 }
 
 // getDelete returns a SQL DELETE statement that represents the Lookup data
-func getDelete(h *Handler, l *resource.Lookup) (string, error) {
+func getDelete(h *Handler, q *query.Query) (string, error) {
 	str := "DELETE FROM " + h.tableName + " WHERE "
-	q, err := getQuery(l)
+	qString, err := getQuery(q)
 	if err != nil {
 		log.WithField("error", err).Warn("Error building query for delete statement.")
 		return "", err
 	}
-	str += q + ";"
+	str += qString + ";"
 	return str, nil
 }
 
@@ -365,7 +366,7 @@ func getUpdate(h *Handler, i *resource.Item, o *resource.Item) (string, error) {
 		log.WithField("error", err).Warn("Error converting Updated to string.")
 		return "", resource.ErrNotImplemented
 	}
-	a := fmt.Sprintf("UPDATE OR ROLLBACK %s SET etag=%s,updated=%s,", h.tableName, iEtag, upd)
+	a := fmt.Sprintf("UPDATE %s SET etag=%s,updated=%s,", h.tableName, iEtag, upd)
 	z := fmt.Sprintf("WHERE id=%s AND etag=%s;", id, oEtag)
 	for k, v := range i.Payload {
 		if k != "id" {
@@ -386,12 +387,24 @@ func getUpdate(h *Handler, i *resource.Item, o *resource.Item) (string, error) {
 	a = a[:len(a)-1]
 
 	result := fmt.Sprintf("%s %s", a, z)
+
+	fmt.Println("UPDATE STMT", result)
+
 	return result, nil
 }
 
 // newItemList creates a list of resource.Item from a SQL result row slice
-func newItemList(rows []map[string]interface{}, offset, limit int) (*resource.ItemList, error) {
+func newItemList(rows []map[string]interface{}, q *query.Query) (*resource.ItemList, error) {
 	items := make([]*resource.Item, len(rows))
+
+	limit := 0
+	offset := 0
+
+	if (q.Window != nil) {
+		limit = q.Window.Limit
+		offset = q.Window.Offset
+	}
+
 	l := &resource.ItemList{Offset: offset, Limit: limit, Total: len(rows), Items: items}
 	for i, r := range rows {
 		item, err := newItem(r)
@@ -414,14 +427,14 @@ func newItem(row map[string]interface{}) (*resource.Item, error) {
 	delete(row, "etag")
 	delete(row, "updated")
 
-	ct, err := time.Parse("2006-01-02 15:04:05.99999999 -0700 MST", created.(string))
+	ct, err := time.Parse("2006-01-02 15:04:05", created.(string))
 	if err != nil {
 		log.WithField("error", err).Warn("Error parsing updated.")
 		return nil, err
 	}
 	row["created"] = ct
 
-	tu, err := time.Parse("2006-01-02 15:04:05.99999999 -0700 MST", updated.(string))
+	tu, err := time.Parse("2006-01-02 15:04:05", updated.(string))
 	if err != nil {
 		log.WithField("error", err).Warn("Error parsing updated.")
 		return nil, err

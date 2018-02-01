@@ -8,7 +8,7 @@
 //    `f1` VARCHAR(128),
 //    `f2` INTEGER
 // );
-package sqlite3
+package sql
 
 import (
 	"database/sql"
@@ -17,9 +17,9 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pborman/uuid"
-	"github.com/rs/rest-layer/resource"
-	"github.com/rs/rest-layer/schema"
-	"github.com/rs/rest-layer/schema/query"
+	"github.com/andersonveiga/rest-layer/resource"
+	"github.com/andersonveiga/rest-layer/schema"
+	"github.com/andersonveiga/rest-layer/schema/query"
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/net/context"
 )

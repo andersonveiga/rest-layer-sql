@@ -1,4 +1,4 @@
-package sqlite3_test
+package sql_test
 
 import (
 	"database/sql"
@@ -9,9 +9,9 @@ import (
 	"github.com/jxstanford/rest-layer-sqlite3"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/cors"
-	"github.com/rs/rest-layer/resource"
-	"github.com/rs/rest-layer/rest"
-	"github.com/rs/rest-layer/schema"
+	"github.com/andersonveiga/rest-layer/resource"
+	"github.com/andersonveiga/rest-layer/rest"
+	"github.com/andersonveiga/rest-layer/schema"
 )
 
 const (
