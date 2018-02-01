@@ -126,7 +126,7 @@ func (h *Handler) Insert(ctx context.Context, items []*resource.Item) error {
 			log.WithField("error", err).Warn("Error creating insert statement.")
 			return err
 		}
-		fmt.Println("INSERT STMT", s)
+
 		_, err = h.session.Exec(s)
 		if err != nil {
 			txPtr.Rollback()
@@ -387,8 +387,6 @@ func getUpdate(h *Handler, i *resource.Item, o *resource.Item) (string, error) {
 	a = a[:len(a)-1]
 
 	result := fmt.Sprintf("%s %s", a, z)
-
-	fmt.Println("UPDATE STMT", result)
 
 	return result, nil
 }
