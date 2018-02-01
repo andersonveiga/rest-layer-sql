@@ -1,7 +1,7 @@
 // Package sql is a REST Layer resource storage handler for databases supported via
 // drivers for database/sql. It implements the Storer interface defined in
 // rest-layer/resource/storage.go.
-package sqlite3
+package sql
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/rs/rest-layer/resource"
-	"github.com/rs/rest-layer/schema/query"
+	"github.com/andersonveiga/rest-layer/resource"
+	"github.com/andersonveiga/rest-layer/schema/query"
 )
 
 const (
